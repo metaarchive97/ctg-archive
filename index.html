@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Metadata Archive</title>
+  <link rel="icon" type="image/png"
+    href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==">
+  <style>
+    body {
+      margin: 40px;
+      font-family: sans-serif;
+    }
+
+    .grid {
+      display: grid;
+      gap: .75rem;
+    }
+
+    .grid.loading {
+      align-items: center;
+      text-align: center;
+      height: 60vh;
+      grid-template-columns: 1fr;
+    }
+
+    .card {
+      display: grid;
+      border: 1px solid #ddd;
+      border-radius: 0.5rem;
+      transition: box-shadow .2s ease-in-out;
+    }
+
+    .card:hover {
+      box-shadow: 0 0 1px #999;
+    }
+
+    .card a {
+      display: grid;
+      gap: 2rem;
+      padding: .5rem;
+    }
+
+    .card h3 {
+      margin: 0;
+    }
+
+    .card__meta {
+      color: #a8a8a8;
+      font-size: 0.75rem;
+    }
+
+    img {
+      width: 100%;
+      height: auto;
+      border-radius: 0.5rem;
+      overflow: hidden;
+      object-fit: cover;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      column-gap: 2rem;
+      row-gap: 0.5rem;
+      margin-bottom: 20px;
+    }
+
+    input {
+      font-size: 1rem;
+      padding: 8px;
+      width: 300px;
+    }
+
+    footer {
+      margin-block: 1rem;
+      text-align: center;
+      font-size: 0.75rem;
+      color: #ddd;
+    }
+
+    a {
+      color: currentColor;
+      text-decoration: none;
+    }
+
+    @media (min-width: 1024px) {
+      .grid {
+        grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="controls">
+    <input type="text" id="search" placeholder="Search titles...">
+
+    <div>
+      <label for="sort">Sort By:</label>
+      <select id="sort">
+        <option value="date_desc" selected>Newest</option>
+        <option value="date_asc">Oldest</option>
+        <option value="title_asc">A - Z</option>
+        <option value="title_desc">Z - A</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="grid loading" id="container"><span class="loader">Loading...</span></div>
+  <footer><a href="https://github.com/metaarchive97/ctg-archive/blob/master/readme.md">Disclaimer</a></footer>
+
+  <script>
+    const container = document.getElementById('container');
+    const loader = container.querySelector('.loader');
+
+    let allVideos = [];
+    let renderedVideos = [];
+    let renderedCount = 0;
+    const batchSize = 12;
+
+    const renderBatch = (videos, reset = false) => {
+      if (reset) {
+        renderedCount = 0;
+        container.innerHTML = '';
+      }
+
+      if (videos < 1) {
+        const msg = document.createElement('p');
+        msg.innerText = 'No videos found'
+        container.appendChild(msg);
+
+        return
+      }
+
+      const fragment = document.createDocumentFragment();
+      const nextBatch = videos.slice(renderedCount, renderedCount + batchSize);
+
+      nextBatch.forEach(video => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.innerHTML = `
+    
+            <a href="https://www.youtube.com/watch?v=${video.videoId}" target="_blank">
+            <img src="${video.thumbnail}" alt="Cris The Girl: ${video.title}">
+            <h3>${video.title}</h3>
+            <div class="card__meta">
+              Published on: ${video.publishedAt}
+              </div>
+              </a>
+            
+            `;
+        fragment.appendChild(card);
+      });
+
+      container.appendChild(fragment);
+      renderedCount += nextBatch.length;
+
+      if (renderedCount < videos.length) {
+        requestAnimationFrame(() => renderBatch(videos));
+      }
+    };
+
+
+    const sortData = (type, data) => {
+      let sorted = [...data]
+      if (type === 'title_asc') {
+        sorted.sort((a, b) => a.title.localeCompare(b.title))
+      } else if (type === 'title_desc') {
+        sorted.sort((a, b) => b.title.localeCompare(a.title))
+      } else if (type === 'date_asc') {
+        sorted.sort((a, b) => new Date(a.publishedAt) - new Date(b.publishedAt));
+      } else {
+        sorted.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+      }
+
+      return sorted
+    }
+
+    const onSortChange = (type) => {
+      const data = sortData(type, renderedVideos)
+      renderBatch(data, true)
+    }
+
+    fetch('videos.json')
+      .then(res => res.json())
+      .then(data => {
+        allVideos = sortData('date_desc', data);
+
+        loader?.remove();
+        container.classList.remove('loading');
+
+        renderBatch(allVideos);
+
+        renderedVideos = [...allVideos];
+
+
+        const searchInput = document.getElementById('search');
+        const sortInput = document.getElementById('sort')
+        let debounceTimeout;
+
+        searchInput.addEventListener('input', e => {
+          const value = e.target.value.toLowerCase();
+          clearTimeout(debounceTimeout);
+
+          debounceTimeout = setTimeout(() => {
+            const filtered = allVideos.filter(v => v.title.toLowerCase().includes(value));
+            renderedVideos = sortData(sortInput.value, filtered);
+            renderBatch(renderedVideos, true);
+          }, 100);
+        });
+
+        sortInput.addEventListener('change', e => {
+          onSortChange(e.target.value)
+        })
+      });
+  </script>
+
+</body>
+
+</html>
